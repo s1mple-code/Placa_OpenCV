@@ -5,13 +5,25 @@ import re
 import numpy as np
 import pymysql.cursors
 from PIL import Image
+from flask import Flask, render_template, Response
+from datetime import datetime
 
+app = Flask(__name__)
+@app.route('/')
+
+def index():
+    """Video streaming home page."""
+    return render_template('index.html')
 
 def video():
 
     video = cv2.VideoCapture(0)
 
     classificador = cv2.CascadeClassifier('haarcascade_russian_plate_number.xml')
+    now = datetime.now()
+    print(now.minute)
+    print(now.second)
+
 
     while(True):
 
@@ -30,14 +42,15 @@ def video():
 
             imagemPlaca(roi)
 
-        cv2.imshow("Asio", frame)
+       # cv2.imshow("Asio", frame)
 
-        if cv2.waitKey(1) == ord('q'):
-            break
+        frame = cv2.imencode('.jpg', frame)[1].tobytes()
+        yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    video.release()
-    cv2.destroyAllWindows()
 
+        key = cv2.waitKey(20)
+        if key == 27:
+           break
 
 def imagemPlaca(img):
 
@@ -69,35 +82,65 @@ def imagemPlaca(img):
 
     if(n == 7):
 
-        if(placa[0].isalpha() == True and placa[1].isalpha() == True and placa[2].isalpha() == True):
+          print(placa)
 
-            print('Achou!')
-            import principal
-            principal.info(placa)
-            placa_BD(placa)
-            principal
+          if(placa[0].isalpha() == True and placa[1].isalpha() == True and placa[2].isalpha() == True):
 
-    print(placa)
+              if(placa[3].isalpha() == False and placa[5].isalpha()== False and placa[6].isalpha() == False):
+
+                print('Achou!')
+                now = datetime.now()
+                print(now.minute)
+                print(now.second)
+
+                print(placa)
+                placa_BD(placa)
+
+                print(placa)
+
 
 def placa_BD(placa):
 
     conexao = pymysql.connect(
         host='localhost',
         user='root',
-        passwd='Python@2590',
+        passwd='',
         port=3306,
-        db='controle_placa',
+        db='pagina_telefone',
         cursorclass=pymysql.cursors.DictCursor
     )
     placa = placa.upper()
 
     cursor = conexao.cursor()
     cursor.execute("SHOW DATABASES;")
-    cursor.execute("USE controle_placa;")
+    cursor.execute("USE pagina_telefone;")
     cursor.execute("SHOW TABLES;")
     cursor.execute("SELECT * FROM historico")
-    cursor.execute("INSERT INTO historico(data_hora, placa) VALUES(NOW(), %s)", placa)
+
+    permissao = cursor.execute("SELECT placa FROM cliente WHERE placa = %s", placa)
+    if(permissao > 0):
+      verificacao = cursor.execute("SELECT placa FROM historico WHERE placa = %s", placa)
+
+      if(verificacao == 0):
+          cursor.execute("INSERT INTO historico(placa, data_e_hora, acesso) VALUES(%s, NOW(), 1)", placa)
+      else:
+          print("Placa já entrou")
+    else:
+      verificacao = cursor.execute("SELECT placa FROM historico WHERE placa = %s", placa)
+
+      if (verificacao == 0):
+          cursor.execute("INSERT INTO historico(placa, data_e_hora, acesso) VALUES(%s, NOW(), 0)", placa)
+      else:
+          print("Placa já entrou")
+
+
     conexao.commit()
     conexao.close()
 
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming route. Put this in the src attribute of an img tag."""
+    return Response(video(),
+    mimetype='multipart/x-mixed-replace; boundary=frame')
 
+video()

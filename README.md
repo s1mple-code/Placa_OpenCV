@@ -1,1 +1,0 @@
-# Placa_OpenCV
